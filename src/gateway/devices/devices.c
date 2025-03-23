@@ -4,18 +4,16 @@
 #include <winsock2.h>
 #include <iphlpapi.h>
 #include <windows.h>
-#include <pcap.h>
 
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "iphlpapi.lib")
 
 #define MAX_IP 254
+#define MAX_THREADS 50 
 
-int ping(const char *ip) {
-    char command[64];
-    snprintf(command, sizeof(command), "ping -n 1 -w 100 %s > nul", ip);
-    return (system(command) == 0);
-}
+typedef struct {
+    char ip[20];
+} ThreadData;
 
 int get_mac_address(const char *ip, char *mac) {
     IPAddr destIP;
@@ -34,6 +32,18 @@ int get_mac_address(const char *ip, char *mac) {
     return 0;
 }
 
+DWORD WINAPI scan_ip(LPVOID param) {
+    ThreadData *data = (ThreadData *)param;
+    char mac[18];
+
+    if (get_mac_address(data->ip, mac)) {
+        printf("Active Host: %s | MAC: %s\n", data->ip, mac);
+    }
+
+    free(data);  
+    return 0;
+}
+
 int main() {
     char subnet[16];
     printf("Enter subnet (e.g., 192.168.1): ");
@@ -41,18 +51,36 @@ int main() {
 
     printf("Scanning subnet %s.0...\n", subnet);
 
-    for (int i = 1; i <= MAX_IP; i++) {
-        char ip[20], mac[18];
-        snprintf(ip, sizeof(ip), "%s.%d", subnet, i);
-        printf("Scanning %s...\n", ip);
+    HANDLE threads[MAX_THREADS];  
+    int threadCount = 0;
 
-        if (ping(ip)) {
-            printf("Active (Ping): %s\n", ip);
+    for (int i = 1; i <= MAX_IP; i++) {
+        char ip[20];
+        snprintf(ip, sizeof(ip), "%s.%d", subnet, i);
+
+        ThreadData *data = (ThreadData *)malloc(sizeof(ThreadData));
+        if (!data) {
+            fprintf(stderr, "Memory allocation failed\n");
+            break;
         }
-        
-        if (get_mac_address(ip, mac)) {
-            printf("  MAC Address: %s\n", mac);
+        strcpy(data->ip, ip);
+
+        threads[threadCount] = CreateThread(NULL, 0, scan_ip, data, 0, NULL);
+        if (threads[threadCount] == NULL) {
+            fprintf(stderr, "Failed to create thread for %s\n", ip);
+            free(data);
+        } else {
+            threadCount++;
+        }
+
+        if (threadCount >= MAX_THREADS) {
+            WaitForMultipleObjects(threadCount, threads, TRUE, INFINITE);
+            threadCount = 0;  
         }
     }
+
+    WaitForMultipleObjects(threadCount, threads, TRUE, INFINITE);
+
+    printf("Scanning complete.\n");
     return 0;
 }
