@@ -11,14 +11,12 @@
 
 #define MAX_IP 254
 
-// Function to send an ICMP Echo Request (Ping)
 int ping(const char *ip) {
     char command[64];
     snprintf(command, sizeof(command), "ping -n 1 -w 100 %s > nul", ip);
     return (system(command) == 0);
 }
 
-// Function to retrieve MAC address via ARP request
 int get_mac_address(const char *ip, char *mac) {
     IPAddr destIP;
     ULONG macAddr[2];
