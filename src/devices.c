@@ -61,7 +61,6 @@ void get_local_ip_and_mac() {
     if (GetAdaptersInfo(adapterInfo, &size) == NO_ERROR) {
         PIP_ADAPTER_INFO current = adapterInfo;
         while (current) {
-            // Skip invalid or virtual adapters
             if (
                 strcmp(current->IpAddressList.IpAddress.String, "0.0.0.0") != 0 &&
                 strncmp(current->IpAddressList.IpAddress.String, "169.254", 7) != 0 &&
@@ -99,10 +98,9 @@ DWORD WINAPI scan_ip(LPVOID param) {
     return 0;
 }
 
-void print_device(const char *label, const char *ip, const char *mac) {
-    printf("%s:\n", label);
-    printf("  IP  : %s\n", ip);
-    printf("  MAC : %s\n\n", mac);
+void print_device(const char *label, const char *ip, const char *mac, FILE *file) {
+    printf("%s\n%s\n%s\n\n", label, ip, mac);
+    fprintf(file, "%s\n%s\n%s\n\n", label, ip, mac);
 }
 
 int normalize_mac(const char *src, char *normalized) {
@@ -173,22 +171,45 @@ int main() {
 
     printf("\nScan Complete!\n\n");
 
+    FILE *file = fopen("devices.txt", "w");
+    if (!file) {
+        perror("Failed to open devices.txt for writing");
+        DeleteCriticalSection(&cs);
+        return 1;
+    }
+
     int printedOthers = 0;
+    int printedSelf = 0;
+    int printedGateway = 0;
+
     for (int i = 0; i < deviceCount; i++) {
-        if (strcmp(devices[i].ip, myIP) == 0 || is_same_mac(devices[i].mac, myMAC)) {
-            print_device("Your Device", devices[i].ip, devices[i].mac);
-        } else if (strcmp(devices[i].ip, gatewayIP) == 0 || is_same_mac(devices[i].mac, gatewayMAC)) {
-            print_device("Gateway Device", devices[i].ip, devices[i].mac);
-        } else {
-            if (!printedOthers) {
-                printf("Other Devices:\n");
-                printedOthers = 1;
-            }
-            printf("  IP  : %s\n", devices[i].ip);
-            printf("  MAC : %s\n\n", devices[i].mac);
+        if (!printedSelf && (strcmp(devices[i].ip, myIP) == 0 || is_same_mac(devices[i].mac, myMAC))) {
+            print_device("Your Device", devices[i].ip, devices[i].mac, file);
+            printedSelf = 1;
+        } else if (!printedGateway && (strcmp(devices[i].ip, gatewayIP) == 0 || is_same_mac(devices[i].mac, gatewayMAC))) {
+            print_device("Gateway Device", devices[i].ip, devices[i].mac, file);
+            printedGateway = 1;
         }
     }
 
+    for (int i = 0; i < deviceCount; i++) {
+        if ((strcmp(devices[i].ip, myIP) == 0 || is_same_mac(devices[i].mac, myMAC)) ||
+            (strcmp(devices[i].ip, gatewayIP) == 0 || is_same_mac(devices[i].mac, gatewayMAC))) {
+            continue;
+        }
+
+        if (!printedOthers) {
+            printf("Other Devices:\n");
+            fprintf(file, "Other Devices\n");
+            printedOthers = 1;
+        }
+
+        printf("  IP  : %s\n", devices[i].ip);
+        printf("  MAC : %s\n\n", devices[i].mac);
+        fprintf(file, "%s\n%s\n\n", devices[i].ip, devices[i].mac);
+    }
+
+    fclose(file);
     DeleteCriticalSection(&cs);
     return 0;
 }
