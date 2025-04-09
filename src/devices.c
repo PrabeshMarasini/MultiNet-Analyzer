@@ -122,12 +122,16 @@ int is_same_mac(const char *mac1, const char *mac2) {
 }
 
 int main() {
-    char subnet[16];
-    printf("Enter subnet (e.g., 192.168.1): ");
-    scanf("%15s", subnet);
-
     InitializeCriticalSection(&cs);
     get_local_ip_and_mac();
+
+    char subnet[16] = {0};
+    char *lastDot = strrchr(myIP, '.');
+    if (lastDot) {
+        size_t len = lastDot - myIP;
+        strncpy(subnet, myIP, len);
+        subnet[len] = '\0';
+    }
 
     printf("\nDetected Your Device:\n");
     printf("  IP  : %s\n", myIP);
